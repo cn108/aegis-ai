@@ -48,13 +48,45 @@ def create_log_entry(is_malicious=False):
 
         label = 1
     else:
-        # Benign patterns
-        dest_port = random.choice([80, 443, 53, 8080])
-        protocol = random.choice(["TCP", "UDP"])
-        bytes_transferred = random.randint(500, 50000)
-        failed_login_attempts = random.randint(0, 1)
-        user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-        geo_location = random.choice(["NG", "US", "GB", "ZA"])
+        # Mix common traffic profiles instead of making benign records identical.
+        profile = random.choices(
+            ["web", "dns", "admin", "api", "backup"],
+            weights=[55, 15, 8, 17, 5],
+            k=1,
+        )[0]
+        if profile == "web":
+            dest_port = random.choice([80, 443])
+            protocol = "TCP"
+            bytes_transferred = random.randint(500, 100000)
+            user_agent = random.choice(
+                [
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36",
+                    "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/605.1.15",
+                ]
+            )
+        elif profile == "dns":
+            dest_port = 53
+            protocol = "UDP"
+            bytes_transferred = random.randint(60, 4096)
+            user_agent = "dns-resolver/1.0"
+        elif profile == "admin":
+            dest_port = random.choice([22, 3389])
+            protocol = "TCP"
+            bytes_transferred = random.randint(1000, 20000)
+            user_agent = random.choice(["OpenSSH_9.6", "Windows Remote Desktop"])
+        elif profile == "api":
+            dest_port = random.choice([443, 8080])
+            protocol = "TCP"
+            bytes_transferred = random.randint(1000, 250000)
+            user_agent = random.choice(["Aegis-Service/2.1", "python-httpx/0.27"])
+        else:
+            dest_port = 443
+            protocol = "TCP"
+            bytes_transferred = random.randint(100000, 8_000_000)
+            user_agent = "backup-agent/3.4"
+        failed_login_attempts = random.choices([0, 1, 2], weights=[90, 9, 1], k=1)[0]
+        geo_location = random.choice(["NG", "US", "GB", "ZA", "GH", "KE", "DE"])
         label = 0
 
     return {

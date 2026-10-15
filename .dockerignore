@@ -1,0 +1,10 @@
+.git
+.env
+.venv
+venv
+__pycache__
+*.py[cod]
+*.sqlite3
+.pytest_cache
+.coverage
+htmlcov

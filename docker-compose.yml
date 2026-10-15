@@ -1,0 +1,17 @@
+services:
+  aegis-api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      AEGIS_API_TOKEN: ${AEGIS_API_TOKEN:?Set AEGIS_API_TOKEN in .env}
+      AEGIS_DATABASE_PATH: /data/aegis.sqlite3
+      AEGIS_RATE_LIMIT_REQUESTS: ${AEGIS_RATE_LIMIT_REQUESTS:-120}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-}
+    volumes:
+      - aegis-data:/data
+    restart: unless-stopped
+
+volumes:
+  aegis-data:

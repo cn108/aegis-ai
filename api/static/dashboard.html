@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Aegis AI | Analyst Console</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: Inter, "Segoe UI", Arial, sans-serif;
+        color: #172033;
+        background: #f2f5f9;
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; }
+      header { background: #10243a; color: white; padding: 22px max(24px, calc((100% - 1180px) / 2)); }
+      header h1 { margin: 0 0 5px; font-size: 23px; }
+      header p { margin: 0; color: #c8d5e2; }
+      main { max-width: 1180px; margin: 24px auto; padding: 0 18px; }
+      .toolbar, .panel { background: white; border: 1px solid #dce4ec; border-radius: 10px; padding: 16px; }
+      .toolbar { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; }
+      label { display: grid; gap: 5px; color: #526174; font-size: 13px; }
+      input, select, button { min-height: 38px; border: 1px solid #cbd5e1; border-radius: 6px; padding: 7px 10px; font: inherit; }
+      input { min-width: 220px; }
+      button { cursor: pointer; background: #155e75; border-color: #155e75; color: white; font-weight: 600; }
+      button.secondary { color: #203047; background: white; border-color: #cbd5e1; }
+      button:disabled { opacity: .55; cursor: wait; }
+      .status { min-height: 22px; margin: 12px 2px; color: #526174; }
+      .status.error { color: #b42318; }
+      .panel { overflow-x: auto; }
+      table { width: 100%; border-collapse: collapse; text-align: left; }
+      th, td { border-bottom: 1px solid #e5eaf0; padding: 11px 9px; vertical-align: top; }
+      th { color: #526174; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+      td { font-size: 14px; }
+      .badge { display: inline-block; padding: 4px 8px; border-radius: 20px; background: #e6f2f4; color: #155e75; white-space: nowrap; }
+      .severity-critical, .severity-high { background: #fee4e2; color: #912018; }
+      .review-controls { display: flex; gap: 6px; flex-wrap: wrap; }
+      .review-controls button { min-height: 30px; padding: 4px 8px; font-size: 12px; }
+      .row-note { width: 100%; min-width: 130px; min-height: 32px; margin-bottom: 5px; }
+      .pagination { display: flex; justify-content: space-between; align-items: center; padding-top: 14px; }
+      .detail { display: none; margin-top: 14px; }
+      .detail pre { overflow: auto; max-height: 250px; white-space: pre-wrap; background: #f5f7fa; padding: 12px; border-radius: 6px; }
+      .helper { font-size: 12px; color: #64748b; }
+      @media (max-width: 720px) { header { padding: 18px; } main { margin-top: 14px; } th:nth-child(3), td:nth-child(3) { display: none; } }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Aegis AI Analyst Console</h1>
+      <p>Review generated threat alerts. This console does not execute remediation actions.</p>
+    </header>
+    <main>
+      <section class="toolbar" aria-label="Connection and alert filters">
+        <label>API bearer token
+          <input id="token" type="password" autocomplete="current-password" placeholder="Enter AEGIS_API_TOKEN">
+        </label>
+        <button id="connect">Connect</button>
+        <label>Severity
+          <select id="severity">
+            <option value="">All severities</option>
+            <option>CRITICAL</option><option>HIGH</option><option>MEDIUM</option><option>LOW</option>
+          </select>
+        </label>
+        <label>Review status
+          <select id="review-status">
+            <option value="">All review states</option>
+            <option value="pending_review">Needs review</option>
+            <option value="confirmed">Confirmed</option>
+            <option value="false_positive">False positive</option>
+            <option value="escalated">Escalated</option>
+          </select>
+        </label>
+        <button id="refresh" class="secondary">Refresh alerts</button>
+      </section>
+      <div id="status" class="status" role="status" aria-live="polite">Enter the API token from your environment to load alerts.</div>
+      <section class="panel">
+        <table>
+          <thead><tr><th>Detected</th><th>Severity / tactic</th><th>Summary</th><th>Review</th><th>Analyst actions</th></tr></thead>
+          <tbody id="alerts"><tr><td colspan="5">Connect to load alerts.</td></tr></tbody>
+        </table>
+        <div class="pagination">
+          <button id="previous" class="secondary">Previous</button>
+          <span id="page-info" class="helper"></span>
+          <button id="next" class="secondary">Next</button>
+        </div>
+      </section>
+      <section id="detail" class="panel detail" aria-live="polite"></section>
+    </main>
+    <script>
+      const tokenInput = document.getElementById("token");
+      const statusElement = document.getElementById("status");
+      const alertsElement = document.getElementById("alerts");
+      const pageInfo = document.getElementById("page-info");
+      const limit = 25;
+      let offset = 0;
+      let total = 0;
+      let alerts = [];
+      tokenInput.value = sessionStorage.getItem("aegis-token") || "";
+
+      function setStatus(message, isError = false) {
+        statusElement.textContent = message;
+        statusElement.classList.toggle("error", isError);
+      }
+
+      async function api(path, options = {}) {
+        const token = tokenInput.value.trim();
+        if (!token) throw new Error("Enter your API bearer token first.");
+        const response = await fetch(path, {
+          ...options,
+          headers: {
+            "Authorization": `Bearer ${token}`,
+            ...(options.body ? {"Content-Type": "application/json"} : {}),
+            ...options.headers
+          }
+        });
+        const body = await response.json();
+        if (!response.ok) throw new Error(body.detail || `Request failed (${response.status}).`);
+        return body;
+      }
+
+      function textCell(value) {
+        const cell = document.createElement("td");
+        cell.textContent = value;
+        return cell;
+      }
+
+      function renderAlerts() {
+        alertsElement.replaceChildren();
+        if (!alerts.length) {
+          alertsElement.innerHTML = '<tr><td colspan="5">No alerts match these filters.</td></tr>';
+          return;
+        }
+        for (const alert of alerts) {
+          const row = document.createElement("tr");
+          row.append(textCell(new Date(alert.created_at).toLocaleString()));
+          const severity = document.createElement("td");
+          const badge = document.createElement("span");
+          badge.className = `badge severity-${alert.severity.toLowerCase()}`;
+          badge.textContent = alert.severity;
+          severity.append(badge, document.createElement("br"));
+          severity.append(document.createTextNode(alert.tactic));
+          row.append(severity);
+          row.append(textCell(alert.summary));
+          const review = document.createElement("td");
+          review.append(document.createTextNode(alert.review_status.replaceAll("_", " ")));
+          if (alert.reviewed_by) {
+            const reviewer = document.createElement("div");
+            reviewer.className = "helper";
+            reviewer.textContent = `by ${alert.reviewed_by}`;
+            review.append(reviewer);
+          }
+          row.append(review);
+          const actions = document.createElement("td");
+          const note = document.createElement("input");
+          note.className = "row-note";
+          note.maxLength = 2000;
+          note.placeholder = "Optional analyst note";
+          note.setAttribute("aria-label", `Review note for alert ${alert.id}`);
+          actions.append(note);
+          const controls = document.createElement("div");
+          controls.className = "review-controls";
+          for (const [state, label] of [
+            ["confirmed", "Confirm"],
+            ["false_positive", "False positive"],
+            ["escalated", "Escalate"]
+          ]) {
+            const button = document.createElement("button");
+            button.textContent = label;
+            button.addEventListener("click", () => reviewAlert(alert.id, state, note.value));
+            controls.append(button);
+          }
+          const detailButton = document.createElement("button");
+          detailButton.className = "secondary";
+          detailButton.textContent = "Details";
+          detailButton.addEventListener("click", () => showDetails(alert));
+          controls.append(detailButton);
+          actions.append(controls);
+          row.append(actions);
+          alertsElement.append(row);
+        }
+      }
+
+      async function loadAlerts() {
+        try {
+          sessionStorage.setItem("aegis-token", tokenInput.value.trim());
+          const params = new URLSearchParams({limit: String(limit), offset: String(offset)});
+          const severity = document.getElementById("severity").value;
+          const reviewStatus = document.getElementById("review-status").value;
+          if (severity) params.set("severity", severity);
+          if (reviewStatus) params.set("review_status", reviewStatus);
+          const result = await api(`/api/alerts/?${params}`);
+          alerts = result.items;
+          total = result.total;
+          renderAlerts();
+          pageInfo.textContent = total ? `${offset + 1}-${Math.min(offset + limit, total)} of ${total}` : "0 alerts";
+          document.getElementById("previous").disabled = offset === 0;
+          document.getElementById("next").disabled = offset + limit >= total;
+          setStatus(`Connected. Showing ${alerts.length} alert(s); triage source is shown in alert details.`);
+        } catch (error) {
+          setStatus(error.message, true);
+        }
+      }
+
+      async function reviewAlert(id, reviewStatus, note) {
+        const reviewer = window.prompt("Analyst name for the audit record:");
+        if (!reviewer || !reviewer.trim()) {
+          setStatus("Review cancelled: an analyst name is required.", true);
+          return;
+        }
+        try {
+          await api(`/api/alerts/${id}/review`, {
+            method: "PATCH",
+            body: JSON.stringify({review_status: reviewStatus, reviewer: reviewer.trim(), note: note || null})
+          });
+          setStatus(`Alert ${id} updated to ${reviewStatus.replaceAll("_", " ")}.`);
+          await loadAlerts();
+        } catch (error) {
+          setStatus(error.message, true);
+        }
+      }
+
+      async function showDetails(alert) {
+        const detail = document.getElementById("detail");
+        detail.style.display = "block";
+        let history = [];
+        try {
+          history = await api(`/api/alerts/${alert.id}/history`);
+        } catch (error) {
+          setStatus(error.message, true);
+        }
+        const heading = document.createElement("h2");
+        heading.textContent = `Alert ${alert.id} details`;
+        const metadata = document.createElement("p");
+        metadata.textContent = `Detection: ${alert.detection_methods.join(", ")} · Triage: ${alert.triage_source} · Score: ${alert.anomaly_score}`;
+        const log = document.createElement("pre");
+        log.textContent = JSON.stringify(alert.raw_log, null, 2);
+        const auditTitle = document.createElement("h3");
+        auditTitle.textContent = "Audit history";
+        const audit = document.createElement("pre");
+        audit.textContent = JSON.stringify(history, null, 2);
+        detail.replaceChildren(heading, metadata, log, auditTitle, audit);
+        detail.scrollIntoView({behavior: "smooth", block: "start"});
+      }
+
+      document.getElementById("connect").addEventListener("click", () => { offset = 0; loadAlerts(); });
+      document.getElementById("refresh").addEventListener("click", loadAlerts);
+      document.getElementById("severity").addEventListener("change", () => { offset = 0; loadAlerts(); });
+      document.getElementById("review-status").addEventListener("change", () => { offset = 0; loadAlerts(); });
+      document.getElementById("previous").addEventListener("click", () => { offset = Math.max(0, offset - limit); loadAlerts(); });
+      document.getElementById("next").addEventListener("click", () => { offset += limit; loadAlerts(); });
+    </script>
+  </body>
+</html>

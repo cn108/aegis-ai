@@ -1,0 +1,50 @@
+{
+  "dataset": "synthetic",
+  "split_seed": 42,
+  "threshold_policy": {
+    "method": "validation_benign_score_quantile",
+    "target_validation_false_positive_rate": 0.01,
+    "threshold": -0.20857546326987272
+  },
+  "row_counts": {
+    "training_benign": 7000,
+    "validation_benign": 1500,
+    "test_benign": 1500,
+    "test_malicious": 50
+  },
+  "models": {
+    "isolation_forest": {
+      "true_positives": 21,
+      "false_positives": 9,
+      "true_negatives": 1491,
+      "false_negatives": 29,
+      "precision": 0.7,
+      "recall": 0.42,
+      "f1": 0.525,
+      "false_positive_rate": 0.006,
+      "roc_auc": 0.88166,
+      "average_precision": 0.5723675566969196
+    },
+    "synthetic_rule_baseline": {
+      "true_positives": 50,
+      "false_positives": 0,
+      "true_negatives": 1500,
+      "false_negatives": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "false_positive_rate": 0.0
+    },
+    "hybrid": {
+      "true_positives": 50,
+      "false_positives": 9,
+      "true_negatives": 1491,
+      "false_negatives": 0,
+      "precision": 0.847457627118644,
+      "recall": 1.0,
+      "f1": 0.9174311926605505,
+      "false_positive_rate": 0.006
+    }
+  },
+  "limitations": "Synthetic-only benchmark; rule baseline encodes the generator's attack patterns. This is not evidence of production network detection performance."
+}

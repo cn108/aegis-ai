@@ -21,8 +21,10 @@ class LLMTriageService:
         self.api_key = os.getenv("OPENAI_API_KEY")
         if self.api_key and self.api_key != "your_api_key_here":
             self.client = OpenAI(api_key=self.api_key)
+            self.mode = "openai"
         else:
             self.client = None
+            self.mode = "local_fallback"
 
     def triage_anomaly(self, log_entry):
         if not self.client:
@@ -74,8 +76,10 @@ class LLMTriageService:
         # Fallback/Mock logic for development without API key
         dest_port = log_entry.get("dest_port")
         bytes_transferred = log_entry.get("bytes_transferred", 0)
+        failed_logins = log_entry.get("failed_login_attempts", 0)
+        user_agent = log_entry.get("user_agent", "").lower()
 
-        if dest_port in [22, 3389]:
+        if failed_logins >= 10:
             return {
                 "tactic": "Initial Access (Brute Force)",
                 "severity": "HIGH",
@@ -86,7 +90,7 @@ class LLMTriageService:
                     "Enforce multi-factor authentication (MFA)."
                 ]
             }
-        elif bytes_transferred > 1000000:
+        elif bytes_transferred >= 100_000_000:
             return {
                 "tactic": "Exfiltration",
                 "severity": "CRITICAL",
@@ -96,6 +100,21 @@ class LLMTriageService:
                     "Isolate the source and destination hosts.",
                     "Verify the nature of the transferred data."
                 ]
+            }
+        elif any(marker in user_agent for marker in ("nmap", "cobalt strike", "sqlmap", "metasploit")):
+            return {
+                "tactic": "Command and Control / Discovery",
+                "severity": "HIGH",
+                "summary": (
+                    f"Suspicious tooling was identified in network activity from "
+                    f"{log_entry.get('source_ip')} to {log_entry.get('dest_ip')}. "
+                    "Confirm whether this software is authorized."
+                ),
+                "remediation": [
+                    "Validate the activity with the system owner.",
+                    "Inspect endpoint and network telemetry for related activity.",
+                    "Preserve relevant logs for analyst review.",
+                ],
             }
         else:
             return {
