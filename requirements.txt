@@ -1,0 +1,8 @@
+django
+djangorestframework
+fastapi
+uvicorn
+scikit-learn
+pandas
+openai
+python-dotenv
